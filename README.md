@@ -26,9 +26,7 @@ File format at how does it works
 Inside there is base64 encoded 48 byte structure:
 
     NAME[16] = '2013-10-01:00:00'
-
     AES_KEY[16] = 'AAAAAAAAAAAAAAAA'
-
     HMAC_KEY[16] = 'BBBBBBBBBBBBBBBB'
 
 NAME identificates the key, used for session resumption.
