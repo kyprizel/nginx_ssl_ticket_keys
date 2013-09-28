@@ -6,7 +6,7 @@ Patch for nginx which adds external keyfile support for [RFC5077](http://tools.i
 Directives
 ==========
 
-ssl_session_tickey_key
+ssl_session_ticket_key
 ----------------------
 **syntax:** *ssl_session_ticket_key &lt;string&gt;*
 
