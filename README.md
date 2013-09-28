@@ -16,29 +16,32 @@ ssl_session_tickey_key
 
 Sets ticket key file.
 
-File format at how does it works
+Key file format and how it works
 ================================
+
+File can contain multiple keys.
 
     -----BEGIN SESSION TICKET KEY-----
     MjAxMy0xMC0wMTowMDowMEFBQUFBQUFBQUFBQUFBQUFCQkJCQkJCQkJCQkJCQkJC
     -----END SESSION TICKET KEY-----
+    -----BEGIN SESSION TICKET KEY-----
+    QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB
+    -----END SESSION TICKET KEY-----
 
-Inside there is base64 encoded 48 byte structure:
+Inside there are base64 encoded 48 byte structures, like:
 
     NAME[16] = '2013-10-01:00:00'
     AES_KEY[16] = 'AAAAAAAAAAAAAAAA'
     HMAC_KEY[16] = 'BBBBBBBBBBBBBBBB'
 
-NAME identificates the key, used for session resumption.
-
-File can contain multiple keys.
+*NAME* identificates the key, used for session resumption.
 
 For example:
 
 If you need to accept sessions for users with previous keys and deploy a new one,
 just add it in the begining of the key file.
 Then all the previous sessions will be accepted, but new tickets will be reissued
-using the first key from the list.
+using the new key (first key from the list).
 
 **NB: You need to manually update ticket keys to make them expire!**
 
