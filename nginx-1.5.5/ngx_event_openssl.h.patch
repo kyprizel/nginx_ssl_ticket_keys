@@ -1,0 +1,36 @@
+--- nginx-1.5.5/src/event/ngx_event_openssl.h	2013-09-17 17:31:01.000000000 +0400
++++ nginx-1.5.5/src/event/ngx_event_openssl.h	2013-09-28 07:10:26.368003680 +0400
+@@ -82,6 +82,24 @@
+ } ngx_ssl_session_cache_t;
+ 
+ 
++typedef struct  {
++    u_char                        key_name[16];
++    u_char                        hmac_key[16];
++    u_char                        aes_key[16];
++} ngx_ssl_sess_ticket_key_t;
++
++#ifndef tlsext_tick_md
++#ifdef OPENSSL_NO_SHA256
++#define tlsext_tick_md EVP_sha1
++#else
++#define tlsext_tick_md EVP_sha256
++#endif
++#endif
++
++/* 48 bytes: 16 for keyname, 16 for HMAC secret, 16 for AES private key */
++#define TLSEXT_TICKET_KEYLEN (48)
++
++
+ 
+ #define NGX_SSL_SSLv2    0x0002
+ #define NGX_SSL_SSLv3    0x0004
+@@ -121,6 +139,8 @@
+ 
+ void ngx_ssl_remove_cached_session(SSL_CTX *ssl, ngx_ssl_session_t *sess);
+ ngx_int_t ngx_ssl_set_session(ngx_connection_t *c, ngx_ssl_session_t *session);
++ngx_int_t ngx_ssl_session_ticket_key(ngx_conf_t *cf, ngx_ssl_t *ssl,
++    ngx_str_t *keyfile);
+ #define ngx_ssl_get_session(c)      SSL_get1_session(c->ssl->connection)
+ #define ngx_ssl_free_session        SSL_SESSION_free
+ #define ngx_ssl_get_connection(ssl_conn)                                      \

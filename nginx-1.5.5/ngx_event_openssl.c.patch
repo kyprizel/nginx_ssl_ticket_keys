@@ -1,0 +1,191 @@
+--- nginx-1.5.5/src/event/ngx_event_openssl.c	2013-09-17 17:31:01.000000000 +0400
++++ nginx-1.5.5/src/event/ngx_event_openssl.c	2013-09-28 07:09:19.824839971 +0400
+@@ -38,6 +38,10 @@
+ static void ngx_ssl_session_rbtree_insert_value(ngx_rbtree_node_t *temp,
+     ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel);
+ 
++static int ngx_ssl_session_ticket_key_callback(ngx_ssl_conn_t *ssl_conn,
++    u_char *key_name, u_char *iv, EVP_CIPHER_CTX *cipher_ctx,
++    HMAC_CTX *hmac_ctx, int init);
++
+ static void *ngx_openssl_create_conf(ngx_cycle_t *cycle);
+ static char *ngx_openssl_engine(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+ static void ngx_openssl_exit(ngx_cycle_t *cycle);
+@@ -82,6 +86,7 @@
+ int  ngx_ssl_connection_index;
+ int  ngx_ssl_server_conf_index;
+ int  ngx_ssl_session_cache_index;
++int  ngx_ssl_session_ticket_keys_index;
+ int  ngx_ssl_certificate_index;
+ int  ngx_ssl_stapling_index;
+ 
+@@ -139,6 +144,14 @@
+         return NGX_ERROR;
+     }
+ 
++    ngx_ssl_session_ticket_keys_index = SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
++                                                           NULL);
++    if (ngx_ssl_session_ticket_keys_index == -1) {
++        ngx_ssl_error(NGX_LOG_ALERT, log, 0,
++                      "SSL_CTX_get_ex_new_index() failed");
++        return NGX_ERROR;
++    }
++
+     ngx_ssl_certificate_index = SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
+                                                          NULL);
+     if (ngx_ssl_certificate_index == -1) {
+@@ -2270,6 +2283,154 @@
+     return NGX_OK;
+ }
+ 
++static int
++ngx_ssl_session_ticket_key_callback(ngx_ssl_conn_t *ssl_conn, u_char *key_name,
++    u_char *iv, EVP_CIPHER_CTX *cipher_ctx, HMAC_CTX *hmac_ctx, int init)
++{
++    SSL_CTX                        *ssl_ctx;
++    ngx_array_t                    *ticket_keys;
++    ngx_ssl_sess_ticket_key_t      *ticket_keys_data;
++    ngx_uint_t                      i;
++
++    ssl_ctx = SSL_get_SSL_CTX(ssl_conn);
++    ticket_keys = SSL_CTX_get_ex_data(ssl_ctx,
++                                      ngx_ssl_session_ticket_keys_index);
++
++    if (ticket_keys == NULL || ticket_keys->nelts == 0) {
++        return SSL_TLSEXT_ERR_NOACK;
++    }
++
++    ticket_keys_data = ticket_keys->elts;
++
++    if (init) {
++        RAND_pseudo_bytes(iv, EVP_MAX_IV_LENGTH);
++
++        ngx_memcpy(key_name, ticket_keys_data[0].key_name, 16);
++
++        HMAC_Init_ex(hmac_ctx, ticket_keys_data[0].hmac_key, 16,
++                     tlsext_tick_md(), NULL);
++
++        EVP_EncryptInit_ex(cipher_ctx, EVP_aes_128_cbc(), NULL,
++                           ticket_keys_data[0].aes_key, iv);
++
++        return SSL_TLSEXT_ERR_OK;
++    }
++
++    for (i = 0; i < ticket_keys->nelts; i++) {
++        if (ngx_memcmp(ticket_keys_data[i].key_name, key_name, 16) == 0) {
++            HMAC_Init_ex(hmac_ctx, ticket_keys_data[i].hmac_key, 16,
++                         tlsext_tick_md(), NULL);
++            EVP_DecryptInit_ex(cipher_ctx, EVP_aes_128_cbc(), NULL,
++                               ticket_keys_data[i].aes_key, iv);
++
++            if (i > 0) {
++                return SSL_TLSEXT_ERR_ALERT_FATAL;
++            }
++
++            return SSL_TLSEXT_ERR_ALERT_WARNING;
++        }
++    }
++
++    return SSL_TLSEXT_ERR_OK;
++}
++
++ngx_int_t
++ngx_ssl_session_ticket_key(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *keyfile)
++{
++    BIO                            *bio;
++    ngx_array_t                    *ticket_keys;
++    ngx_ssl_sess_ticket_key_t      *ticket_key;
++    char                           *name = 0;
++    char                           *header = 0;
++    u_char                         *data = 0;
++    long                            len = 0;
++    ngx_uint_t                      idx = 0;
++
++    if (keyfile->len == 0) {
++        return NGX_OK;
++    }
++
++    ticket_keys = ngx_array_create(cf->pool, 2,
++                                       sizeof(ngx_ssl_sess_ticket_key_t));
++    if (ticket_keys == NULL) {
++        return NGX_ERROR;
++    }
++
++    if (ngx_conf_full_name(cf->cycle, keyfile, 1) != NGX_OK) {
++        return NGX_ERROR;
++    }
++
++    bio = BIO_new_file((char *) keyfile->data, "r");
++    if (bio == NULL) {
++        ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
++                      "BIO_new_file(\"%s\") failed", keyfile->data);
++        return NGX_ERROR;
++    }
++
++    for ( ;; ) {
++        if (PEM_read_bio(bio, &name, &header, &data, &len) == 0) {
++            break;
++        } else {
++            if (ngx_memcmp(name, "SESSION TICKET KEY", 18) != 0) {
++                continue;
++            }
++
++            if (len != TLSEXT_TICKET_KEYLEN) {
++                ngx_log_error(NGX_LOG_ALERT, cf->log, 0,
++                              "\"%s\" has invalid ticket key at pos %d (wrong len)",
++                              keyfile->data, idx);
++                continue;
++            }
++
++            ticket_key = ngx_array_push(ticket_keys);
++            if (ticket_key == NULL) {
++                goto failed;
++            }
++
++            ngx_memcpy(ticket_key->key_name, data, 16);
++            ngx_memcpy(ticket_key->hmac_key, data + 16, 16);
++            ngx_memcpy(ticket_key->aes_key, data + 32, 16);
++
++            idx += 1;
++        }
++    }
++
++    /* XXX: leave 1 check only */
++    if (ticket_keys->nelts == 0) {
++        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
++                      "\"%s\" has no valid ticket keys", keyfile->data);
++        goto failed;
++    }
++
++    if (SSL_CTX_set_tlsext_ticket_key_cb(ssl->ctx,
++                                         ngx_ssl_session_ticket_key_callback)
++        == 0)
++    {
++        ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
++                      "SSL_CTX_set_tlsext_ticket_key_cb() failed");
++        goto failed;
++    }
++
++    if (SSL_CTX_set_ex_data(ssl->ctx, ngx_ssl_session_ticket_keys_index,
++                            ticket_keys)
++        == 0)
++    {
++        ngx_ssl_error(NGX_LOG_EMERG, ssl->log, 0,
++                      "SSL_CTX_set_ex_data() failed");
++        goto failed;
++    }
++
++    BIO_free(bio);
++
++    return NGX_OK;
++
++failed:
++
++    BIO_free(bio);
++
++    return NGX_ERROR;
++}
++
+ 
+ ngx_int_t
+ ngx_ssl_get_raw_certificate(ngx_connection_t *c, ngx_pool_t *pool, ngx_str_t *s)
