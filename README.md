@@ -19,24 +19,30 @@ Sets ticket key file.
 File format at how does it works
 ================================
 
------BEGIN SESSION TICKET KEY-----
-MjAxMy0xMC0wMTowMDowMEFBQUFBQUFBQUFBQUFBQUFCQkJCQkJCQkJCQkJCQkJC
------END SESSION TICKET KEY-----
+    -----BEGIN SESSION TICKET KEY-----
+    MjAxMy0xMC0wMTowMDowMEFBQUFBQUFBQUFBQUFBQUFCQkJCQkJCQkJCQkJCQkJC
+    -----END SESSION TICKET KEY-----
 
 Inside there is base64 encoded 48 byte structure:
+
     NAME[16] = '2013-10-01:00:00'
+
     AES_KEY[16] = 'AAAAAAAAAAAAAAAA'
+
     HMAC_KEY[16] = 'BBBBBBBBBBBBBBBB'
+
 NAME identificates the key, used for session resumption.
 
 File can contain multiple keys.
 
 For example:
-If you need to accept sessions for users with previous keys and deploy a new one.
+
+If you need to accept sessions for users with previous keys and deploy a new one,
+just add it in the begining of the key file.
 Then all the previous sessions will be accepted, but new tickets will be reissued
 using the first key from the list.
 
-*NB: You need to manually update ticket keys*.
+**NB: You need to manually update ticket keys to make them expire!**
 
 Installation
 ============
