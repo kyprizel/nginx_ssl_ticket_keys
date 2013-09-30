@@ -38,12 +38,15 @@ Inside there are base64 encoded 48 byte structures, like:
 
 For example:
 
-If you need to accept sessions for users with previous keys and deploy a new one,
-just add it in the begining of the key file.
-Then all the previous sessions will be accepted, but new tickets will be reissued
-using the new key (first key from the list).
+If you need to accept sessions for users with previous keys and deploy a new one, just add it in the begining of the key file.
+Then all the previous sessions will be accepted, but new tickets will be reissued using the new key (first key from the list).
 
 **NB: You need to manually update ticket keys to make them expire!**
+
+Oneliner for key rotation, generates new key and stores not more than X=2 old keys:
+
+    $ openssl rand -base64 48 | awk '{print "-----BEGIN SESSION TICKET KEY-----"; print; print "-----END SESSION TICKET KEY-----"}' >> ticket.key.new && cat ticket.key | awk 'sa==1{n++;sa=1}/-----BEGIN SESSION TICKET KEY-----/{sa=1;X=2}{if(n<3*X){print;}}' >> ticket.key.new && mv ticket.key.new ticket.key
+
 
 Installation
 ============
@@ -53,7 +56,7 @@ Patch and compile.
 
     wget 'http://nginx.org/download/nginx-VERSION.tar.gz'
     tar -xzvf nginx-VERSION.tar.gz
-    patch -p0 < ngx_http_ssl_module-VERSION.patch
+    patch -p0 < nginx-VERSION.patch
 
     ./configure --with-debug --with-http_ssl_module
     make
