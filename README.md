@@ -1,5 +1,5 @@
-This functionality is already in Nginx dev, don't use this path!
-================================================================
+**This functionality is already in Nginx dev, don't use this patch!**
+
 
 nginx_ssl_ticket_keys
 =====================
