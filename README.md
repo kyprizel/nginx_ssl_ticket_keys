@@ -1,3 +1,6 @@
+This functionality is already in Nginx dev, don't use this path!
+================================================================
+
 nginx_ssl_ticket_keys
 =====================
 
